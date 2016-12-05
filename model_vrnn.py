@@ -45,6 +45,7 @@ def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=
         else:
             return tf.add(tf.matmul(input_, matrix), bias)
 
+
 class VartiationalRNNCell(tf.nn.rnn_cell.RNNCell):
     '''
     Class to define a Variational RNN cell
