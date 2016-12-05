@@ -1,43 +1,103 @@
+'''
+Variational RNN model using TensorFlow
+Model introduced in https://arxiv.org/abs/1506.02216
+
+Chung, J., Kastner, K., Dinh, L., Goel, K., Courville, A. C., & Bengio, Y. (2015).
+A recurrent latent variable model for sequential data.
+In Advances in neural information processing systems (pp. 2980-2988).
+
+Code original author : phreeza (taken from https://github.com/phreeza/tensorflow-vrnn)
+
+Author : Anirudh Vemula
+Date : December 4th, 2016
+'''
+
 import tensorflow as tf
 import numpy as np
 
+
 def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=False):
+    '''
+    Function that defines a linear NN layer that just performs W*x + b
+    Params:
+    input_ : The input data
+    output_size : Dimensions of the output
+    scope (optional) : Variable scope
+    stddev (optional) : Standard deviation of the normal distribution for weight initialization
+    bias_start (optional) : Constant to initialize the bias vector with
+    with_w (optional) : Return weights with the output or not
+    '''
+    # Get shape of the input
+    # [num_inputs, input_dimension]
     shape = input_.get_shape().as_list()
 
+    # Define variable scope
     with tf.variable_scope(scope or "Linear"):
+        # Initialize W
         matrix = tf.get_variable("Matrix", [shape[1], output_size], tf.float32,
                                  tf.random_normal_initializer(stddev=stddev))
+        # Initialize b
         bias = tf.get_variable("bias", [output_size],
-            initializer=tf.constant_initializer(bias_start))
+                               initializer=tf.constant_initializer(bias_start))
+        # Return weights with output?
         if with_w:
-            return tf.matmul(input_, matrix) + bias, matrix, bias
+            return tf.add(tf.matmul(input_, matrix), bias), matrix, bias
         else:
-            return tf.matmul(input_, matrix) + bias
+            return tf.add(tf.matmul(input_, matrix), bias)
 
 class VartiationalRNNCell(tf.nn.rnn_cell.RNNCell):
-    """Variational RNN cell."""
+    '''
+    Class to define a Variational RNN cell
+    Inherits TensorFlow RNNCell
+    '''
 
-    def __init__(self, x_dim, h_dim, z_dim = 100):
+    def __init__(self, x_dim, h_dim, z_dim=100):
+        '''
+        Initialization function
+        Params:
+        x_dim : Dimensions of the input data
+        h_dim : Dimensions of the hidden state
+        z_dim : Dimensions of the latent variable
+        '''
+        # Store dimensions
         self.n_h = h_dim
         self.n_x = x_dim
         self.n_z = z_dim
+
         self.n_x_1 = x_dim
         self.n_z_1 = z_dim
+
+        # Dimensions of the encoder, decoder and prior networks
         self.n_enc_hidden = z_dim
         self.n_dec_hidden = x_dim
         self.n_prior_hidden = z_dim
-        self.lstm = tf.nn.rnn_cell.LSTMCell(self.n_h, state_is_tuple=True)
 
+        # LSTM cell with the hidden state dimension, as given
+        self.lstm = tf.nn.rnn_cell.LSTMCell(self.n_h, state_is_tuple=True)
 
     @property
     def state_size(self):
+        '''
+        Returns the hidden state dimensions of the VRNNCell
+        Since state_is_tuple is True, we have a tuple
+        '''
         return (self.n_h, self.n_h)
 
     @property
     def output_size(self):
+        '''
+        Returns the output dimensions of the VRNNCell
+        '''
         return self.n_h
 
     def __call__(self, x, state, scope=None):
+        '''
+        A single step of the VRNN Cell
+        Params:
+        x : input data
+        state : Current hidden state of the VRNNCell
+        scope (optional) : Variable scope
+        '''
         with tf.variable_scope(scope or type(self).__name__):
             h, c = state
 
