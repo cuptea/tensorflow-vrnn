@@ -59,11 +59,12 @@ class VartiationalRNNCell(tf.nn.rnn_cell.RNNCell):
         h_dim : Dimensions of the hidden state
         z_dim : Dimensions of the latent variable
         '''
-        # Store dimensions
+        # Store dimensions of data
         self.n_h = h_dim
         self.n_x = x_dim
         self.n_z = z_dim
 
+        # Store dimensions of extracted features from x and z
         self.n_x_1 = x_dim
         self.n_z_1 = z_dim
 
@@ -98,45 +99,83 @@ class VartiationalRNNCell(tf.nn.rnn_cell.RNNCell):
         state : Current hidden state of the VRNNCell
         scope (optional) : Variable scope
         '''
+        # Define variable scope
         with tf.variable_scope(scope or type(self).__name__):
+            # Get the hidden and cell state from the input state
             h, c = state
 
+            # Prior variable scope
             with tf.variable_scope("Prior"):
+                # A ReLU nonlinear layer on top of the hidden state h
+                # resulting in an output of the same dimension as z
                 with tf.variable_scope("hidden"):
                     prior_hidden = tf.nn.relu(linear(h, self.n_prior_hidden))
+
+                # A linear layer on top of the previous layer output to get mu
                 with tf.variable_scope("mu"):
                     prior_mu = linear(prior_hidden, self.n_z)
+
+                # A softplus nonlinear layer on top of prior_hidden to get sigma
                 with tf.variable_scope("sigma"):
                     prior_sigma = tf.nn.softplus(linear(prior_hidden, self.n_z))
 
+            # A ReLU nonlinear layer on top of input data x to extract relevant features
+            # of the same dimension as x
             with tf.variable_scope("phi_x"):
                 x_1 = tf.nn.relu(linear(x, self.n_x_1))
 
+            # Encoder
             with tf.variable_scope("Encoder"):
+                # A ReLU nonlinear layer on top of concatentation of input data features and hidden state
+                # resulting in an output of the same dimensions as z
                 with tf.variable_scope("hidden"):
-                    enc_hidden = tf.nn.relu(linear(tf.concat(1,(x_1, h)), self.n_enc_hidden))
+                    enc_hidden = tf.nn.relu(linear(tf.concat(1, (x_1, h)), self.n_enc_hidden))
+
+                # A linear layer on top of the previous layer to get mu
                 with tf.variable_scope("mu"):
-                    enc_mu    = linear(enc_hidden, self.n_z)
+                    enc_mu = linear(enc_hidden, self.n_z)
+
+                # A softplus nonlinear layer on top of enc_hidden to get sigma
                 with tf.variable_scope("sigma"):
                     enc_sigma = tf.nn.softplus(linear(enc_hidden, self.n_z))
+
+            # Sample the auxiliary variable epsilon from a standard normal distribution
+            # epsilon is of shape (num_inputs, dimension_of_z)
             eps = tf.random_normal((x.get_shape().as_list()[0], self.n_z), 0.0, 1.0, dtype=tf.float32)
+
+            # Reparameterization trick. Get value of z
             # z = mu + sigma*epsilon
             z = tf.add(enc_mu, tf.mul(enc_sigma, eps))
+
+            # A ReLU nonlinear layer on top of latent variable z to extract relevant features
+            # of the same dimension as z
             with tf.variable_scope("phi_z"):
                 z_1 = tf.nn.relu(linear(z, self.n_z_1))
 
+            # Decoder
             with tf.variable_scope("Decoder"):
+                # A ReLU nonlinear layer on top of concatenation of latent variable features and hidden state
+                # resulting in an output of the same dimensions as x
                 with tf.variable_scope("hidden"):
-                    dec_hidden = tf.nn.relu(linear(tf.concat(1,(z_1, h)), self.n_dec_hidden))
+                    dec_hidden = tf.nn.relu(linear(tf.concat(1, (z_1, h)), self.n_dec_hidden))
+
+                # A linear layer on top of the previous layer to get mu
                 with tf.variable_scope("mu"):
                     dec_mu = linear(dec_hidden, self.n_x)
+
+                # A softplus nonlinear layer on top of dec_hidden to get sigma
                 with tf.variable_scope("sigma"):
                     dec_sigma = tf.nn.softplus(linear(dec_hidden, self.n_x))
+
+                # A sigmoid nonlinear layer on top of dec_hidden to get rho (correlation?)
+                # NOTE not proposed in paper, but makes sense
                 with tf.variable_scope("rho"):
                     dec_rho = tf.nn.sigmoid(linear(dec_hidden, self.n_x))
 
+            # Do one step of LSTM with input as concatenation of the input data features and latent variable features
+            output, state2 = self.lstm(tf.concat(1, (x_1, z_1)), state)
 
-            output, state2 = self.lstm(tf.concat(1,(x_1, z_1)), state)
+        # Return all learnt parameters and the LSTM final state
         return (enc_mu, enc_sigma, dec_mu, dec_sigma, dec_rho, prior_mu, prior_sigma), state2
 
 
