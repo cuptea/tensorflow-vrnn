@@ -370,49 +370,92 @@ class VRNN():
         # self.saver = tf.train.Saver(tf.all_variables())
 
     def sample(self, sess, args, num=4410, start=None):
-
+        '''
+        Function to do inference in the model
+        Params:
+        sess: TensorFlow session
+        args: input arguments
+        num: Number of steps to be predicted
+        start (optional): Data to start with
+        '''
+        # a helper function
         def sample_gaussian(mu, sigma):
+            '''
+            Function to get a sample from a Gaussian distribution
+            Params:
+            mu : mean
+            sigma : stddev
+            '''
             return mu + (sigma*np.random.randn(*sigma.shape))
 
+        # Initialize the state of the VRNNCell
+        prev_state = sess.run(self.cell.zero_state(1, tf.float32))
+        # If no start data
         if start is None:
+            # Initialize with a random input of seq_length 1 and dimensions n_input
             prev_x = np.random.randn(1, 1, 2*args.chunk_samples)
+        # If start data is a vector
         elif len(start.shape) == 1:
-            prev_x = start[np.newaxis,np.newaxis,:]
+            # Reshape it to size 1 x 1 x n_input
+            prev_x = start[np.newaxis, np.newaxis, :]
+        # If start data is a matrix
         elif len(start.shape) == 2:
+            # For all time-steps until the last
             for i in range(start.shape[0]-1):
-                prev_x = start[i,:]
-                prev_x = prev_x[np.newaxis,np.newaxis,:]
+                # Get the input data
+                prev_x = start[i, :]
+                # Reshape it to 1 x 1 x n_input
+                prev_x = prev_x[np.newaxis, np.newaxis, :]
+
+                # Construct the feed dict
                 feed = {self.input_data: prev_x,
-                        self.initial_state_c:prev_state[0],
-                        self.initial_state_h:prev_state[1]}
-                
+                        self.initial_state_c: prev_state[0],
+                        self.initial_state_h: prev_state[1]}
+
+                # Run session and get the predicted parameters and final state
                 [o_mu, o_sigma, o_rho, prev_state_c, prev_state_h] = sess.run(
                         [self.mu, self.sigma, self.rho,
-                         self.final_state_c,self.final_state_h],feed)
+                         self.final_state_c, self.final_state_h], feed)
 
-            prev_x = start[-1,:]
-            prev_x = prev_x[np.newaxis,np.newaxis,:]
+                # Update the state
+                prev_state[0] = prev_state_c
+                prev_state[1] = prev_state_h
 
-        prev_state = sess.run(self.cell.zero_state(1, tf.float32))
+            # Store the last time-step input
+            prev_x = start[-1, :]
+            # Reshape it to shape 1 x 1 x n_input
+            prev_x = prev_x[np.newaxis, np.newaxis, :]
+
+        # Matrices to store predicted parameters and data
         chunks = np.zeros((num, 2*args.chunk_samples), dtype=np.float32)
         mus = np.zeros((num, args.chunk_samples), dtype=np.float32)
         sigmas = np.zeros((num, args.chunk_samples), dtype=np.float32)
 
+        # For each time-step at prediction time
         for i in xrange(num):
+            # Construct the feed dict
             feed = {self.input_data: prev_x,
-                    self.initial_state_c:prev_state[0],
-                    self.initial_state_h:prev_state[1]}
+                    self.initial_state_c: prev_state[0],
+                    self.initial_state_h: prev_state[1]}
+            # Run session and get the predicted parameters and final state
             [o_mu, o_sigma, o_rho, next_state_c, next_state_h] = sess.run([self.mu, self.sigma,
-                self.rho, self.final_state_c, self.final_state_h],feed)
+                                                                           self.rho, self.final_state_c, self.final_state_h], feed)
 
+            # Sample from the predicted gaussian to get the next input
+            # TODO What is this? What is the second half of each row?
             next_x = np.hstack((sample_gaussian(o_mu, o_sigma),
                                 2.*(o_rho > np.random.random(o_rho.shape[:2]))-1.))
+
+            # Store the predicted data and parameters
             chunks[i] = next_x
             mus[i] = o_mu
             sigmas[i] = o_sigma
 
+            # Construct the data for next time step
             prev_x = np.zeros((1, 1, 2*args.chunk_samples), dtype=np.float32)
             prev_x[0][0] = next_x
+            # Update state
             prev_state = next_state_c, next_state_h
 
+        # return predicted data and parameters
         return chunks, mus, sigmas
