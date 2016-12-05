@@ -21,6 +21,7 @@ import time
 from datetime import datetime
 import os
 import cPickle
+import pdb
 
 from model_vrnn import VRNN
 from utils_vrnn import DataLoader
@@ -42,7 +43,7 @@ def main():
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--rnn_size', type=int, default=3,
-                        Help='size of RNN hidden state')
+                        help='size of RNN hidden state')
     parser.add_argument('--latent_size', type=int, default=3,
                         help='size of latent space')
     parser.add_argument('--batch_size', type=int, default=3000,
@@ -78,6 +79,8 @@ def train(args):
 
     # Initialize the data loader object
     dataloader = DataLoader(args)
+
+    pdb.set_trace()
 
     # Directory to save the trained model
     dirname = 'save-vrnn'
