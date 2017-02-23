@@ -201,6 +201,10 @@ class VRNN():
             mu : mean
             s : sigma
             rho : correlation
+            formula: L(mu,sigma;y) 
+            			= -(n/2)* ln(2*pi) - (n/2)*ln(sigma^2) - (1/ (2*sigma^2))* reduce_sum((y-mu)^2)
+               			= -(1/2)* reduce_sum( ln(2*pi*sigma^2) +. (y-mu)^2 / sigma^2 ) # "+." means element-wise add
+
             '''
             # Define variable scope
             with tf.variable_scope('normal'):
@@ -212,8 +216,8 @@ class VRNN():
                 z = tf.div(tf.square(norm), ss)
                 # Compute denominator log(2*pi*sigma^2)
                 denom_log = tf.log(2*np.pi*ss, name='denom_log')
-
-                # TODO Figure out what this exactly does
+                # Compute (1/2)* reduce_sum( ln(2*pi*sigma^2) +. (y-mu)^2 / sigma^2 ) # "+." means element-wise add
+                # Please note that the return is -L(mu,sigma;y)
                 result = tf.reduce_sum(z+denom_log, 1)/2
                 # -
                 # (tf.log(tf.maximum(1e-20,rho),name='log_rho')*(1+y[:,args.chunk_samples:])
@@ -233,7 +237,8 @@ class VRNN():
             with tf.variable_scope("kl_gaussgauss"):
                 # Compute the KL-divergence term given in
                 # Auto-encoding VB paper eqn. 10
-                # TODO derive this
+                # KL(mu_1,sigma_1,mu_2,sigma_2) = log(sigma_2/sigma_1) + (sigma_1^2 + (mu_1 - mu_2)^2) / ( 2 * sigma_2^2 ) - 0.5
+                # the derivation can be found here: http://stats.stackexchange.com/questions/7440/kl-divergence-between-two-univariate-gaussians
                 return tf.reduce_sum(0.5 * (
                     2 * tf.log(tf.maximum(1e-9, sigma_2), name='log_sigma_2')
                     - 2 * tf.log(tf.maximum(1e-9, sigma_1), name='log_sigma_1')
